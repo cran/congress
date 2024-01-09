@@ -3,7 +3,8 @@
 #' @param congress Congress number to search for. 81 or later are supported.
 #' @param chamber Chamber name. Can be `'house'`, `'senate'`, or `'joint'`.
 #' @param committee Code identifying committee. Character.
-#' @param item Information to request. Can be `'bills'`, `'reports'`, or `'nominations'`.
+#' @param item Information to request. Can be `'bills'`, `'reports'`, `'nominations'`,
+#' `'house-communication'`, or `'senate-communication'`.
 #' @param from_date start date for search, e.g. `'2022-04-01'`. Defaults to most recent.
 #' @param to_date end date for search, e.g. `'2022-04-03'`. Defaults to most recent.
 #' @param limit number of records to return. Default is 20. Will be truncated to between 1 and 250.
@@ -25,9 +26,15 @@
 #'
 #' cong_committee(congress = 117, chamber = 'house')
 #'
-#' cong_committee(chamber = 'house', committee = 'hspw00')
+#' cong_committee(chamber = 'house', committee = 'hsed10')
 #'
-#' cong_committee(chamber = 'senate', committee = 'ssas00', item = 'bills')
+#' cong_committee(chamber = 'house', committee = 'hspw00', item = 'house-communication')
+#'
+#' cong_committee(chamber = 'senate', committee = 'jsec03')
+#'
+#' cong_committee(chamber = 'senate', committee = 'slpo00', item = 'bills')
+#'
+#' cong_committee(chamber = 'senate', committee = 'slpo00', item = 'senate-communication')
 #'
 cong_committee <- function(congress = NULL, chamber = NULL, committee = NULL, item = NULL,
                       from_date = NULL, to_date = NULL,
@@ -55,7 +62,7 @@ cong_committee <- function(congress = NULL, chamber = NULL, committee = NULL, it
     httr2::req_headers(
       "accept" = glue::glue("application/{format}")
     )
-  out <- req |>
+  resp <- req |>
     httr2::req_perform()
 
   formatter <- switch(format,
@@ -63,7 +70,7 @@ cong_committee <- function(congress = NULL, chamber = NULL, committee = NULL, it
                       'xml' = httr2::resp_body_xml
   )
 
-  out <- out |>
+  out <- resp <- resp |>
     formatter()
 
   if (clean) {
@@ -72,7 +79,7 @@ cong_committee <- function(congress = NULL, chamber = NULL, committee = NULL, it
         purrr::pluck('committees')
       out <- out |>
         tibble::tibble(x = out) |>
-        tidyr::unnest_wider(.data$x) |>
+        tidyr::unnest_wider('x') |>
         clean_names()
     } else {
       if (is.null(item)) {
@@ -80,7 +87,7 @@ cong_committee <- function(congress = NULL, chamber = NULL, committee = NULL, it
           purrr::pluck('committee') |>
           tibble::enframe() |>
           tidyr::pivot_wider() |>
-          tidyr::unnest_wider(col = where(~purrr::vec_depth(.x) < 4), simplify = TRUE, names_sep = '_') |>
+          tidyr::unnest_wider(col = where(~purrr::pluck_depth(.x) < 4), simplify = TRUE, names_sep = '_') |>
           dplyr::rename_with(.fn = function(x) stringr::str_sub(x, end = -3), .cols = dplyr::ends_with('_1')) |>
           clean_names()
       } else {
@@ -94,19 +101,32 @@ cong_committee <- function(congress = NULL, chamber = NULL, committee = NULL, it
             purrr::pluck(item) |>
             list_hoist() |>
             clean_names()
-        } else {
+        } else if (item == 'house-communication') {
+          out <- out |>
+            purrr::pluck('houseCommunications') |>
+            list_hoist() |>
+            clean_names()
+        } else if (item == 'senate-communication') {
+          out <- out |>
+            purrr::pluck('senateCommunications') |>
+            list_hoist() |>
+            clean_names()
+        } else{
           out <- out |>
             purrr::pluck('committee-bills') |>
             tibble::enframe() |>
             tidyr::pivot_wider() |>
-            tidyr::unnest_wider(col = where(~purrr::vec_depth(.x) < 4), simplify = TRUE, names_sep = '_') |>
-            tidyr::unnest_longer(.data$bills) |>
-            tidyr::unnest_wider(.data$bills) |>
+            tidyr::unnest_wider(col = where(~purrr::pluck_depth(.x) < 4), simplify = TRUE, names_sep = '_') |>
+            tidyr::unnest_longer(dplyr::any_of('bills')) |>
+            tidyr::unnest_wider(dplyr::any_of('bills')) |>
             clean_names()
         }
 
       }
     }
+    out <- out |>
+      add_resp_info(resp) |>
+      cast_date_columns()
   }
   out
 }
@@ -133,5 +153,5 @@ committee_endpoint <- function(congress, committee, chamber, item) {
     }
   }
 
-  out
+  tolower(out)
 }

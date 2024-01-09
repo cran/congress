@@ -24,7 +24,7 @@ cong_amendment(
 
 \item{number}{Amendment assigned number. Numeric.}
 
-\item{item}{Information to request. Can be \code{'actions'}, \code{'amendments'}, or \code{'cosponsors'}}
+\item{item}{Information to request. Can be \code{'actions'}, \code{'amendments'}, or \code{'cosponsors'}. \code{'text'} is available when \code{congress >= 117}.}
 
 \item{from_date}{start date for search, e.g. \code{'2022-04-01'}. Defaults to most recent.}
 
@@ -55,6 +55,5 @@ cong_amendment(congress = 117)
 cong_amendment(congress = 117, type = 'samdt', number = 2137)
 
 cong_amendment(congress = 117, type = 'samdt', number = 2137, item = 'actions')
-
 \dontshow{\}) # examplesIf}
 }

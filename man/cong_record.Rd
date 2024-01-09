@@ -2,7 +2,7 @@
 % Please edit documentation in R/record.R
 \name{cong_record}
 \alias{cong_record}
-\title{Request Bill Information}
+\title{Request Congressional Record Information}
 \usage{
 cong_record(
   year = NULL,
@@ -33,7 +33,7 @@ cong_record(
 \code{tibble} or HTTP response if \code{clean = FALSE}
 }
 \description{
-Request Bill Information
+Request Congressional Record Information
 }
 \examples{
 \dontshow{if (congress::has_congress_key()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}

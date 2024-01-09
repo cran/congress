@@ -17,7 +17,7 @@
 #'
 #' cong_member()
 #'
-#' cong_member(bioguide = 'L000174', clean = FALSE)
+#' cong_member(bioguide = 'L000174', clean = TRUE)
 #'
 #' cong_member(bioguide = 'L000174', item = 'sponsored-legislation')
 #'
@@ -47,7 +47,7 @@ cong_member <- function(bioguide = NULL, item = NULL,
     httr2::req_headers(
       "accept" = glue::glue("application/{format}")
     )
-  out <- req |>
+  resp <- req |>
     httr2::req_perform()
 
   formatter <- switch(format,
@@ -55,14 +55,15 @@ cong_member <- function(bioguide = NULL, item = NULL,
                       'xml' = httr2::resp_body_xml
   )
 
-  out <- out |>
+  out <- resp <- resp |>
     formatter()
 
   if (clean) {
     if (is.null(bioguide)) {
       out <- out |>
         purrr::pluck('members') |>
-        list_hoist() |>
+        lapply(purrr::list_flatten) |>
+        dplyr::bind_rows() |>
         clean_names()
     } else {
       if (is.null(item)) {
@@ -70,23 +71,24 @@ cong_member <- function(bioguide = NULL, item = NULL,
           purrr::pluck('member') |>
           tibble::enframe() |>
           tidyr::pivot_wider() |>
-          tidyr::unnest_wider(col = where(~purrr::vec_depth(.x) < 4), simplify = TRUE, names_sep = '_') |>
+          tidyr::unnest_wider(col = where(~purrr::pluck_depth(.x) < 4), simplify = TRUE, names_sep = '_') |>
           dplyr::rename_with(.fn = function(x) stringr::str_sub(x, end = -3), .cols = dplyr::ends_with('_1')) |>
           clean_names() #|>
         #dplyr::mutate(across(where(is.list), function(x) lapply(x, dplyr::bind_rows)))
       } else {
-        if (item == 'sponsored-legislation') {
-          item <- 'sponsoredLegislation'
-        } else {
-          item <- 'cosponsoredLegislation'
-        }
+        item <- item |>
+          stringr::str_replace_all('-([a-z])', toupper) |>
+          stringr::str_remove_all('-')
 
         out <- out |>
           purrr::pluck(item) |>
-          dplyr::bind_rows() |>
+          list_hoist() |>
           clean_names()
       }
     }
+    out <- out |>
+      add_resp_info(resp) |>
+      cast_date_columns()
   }
   out
 }
@@ -102,5 +104,5 @@ member_endpoint <- function(bioguide, item) {
     }
   }
 
-  out
+  tolower(out)
 }

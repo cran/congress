@@ -57,7 +57,7 @@ cong_treaty <- function(congress = NULL, number = NULL, suffix = NULL, item = NU
     httr2::req_headers(
       "accept" = glue::glue("application/{format}")
     )
-  out <- req |>
+  resp <- req |>
     httr2::req_perform()
 
   formatter <- switch(format,
@@ -65,7 +65,7 @@ cong_treaty <- function(congress = NULL, number = NULL, suffix = NULL, item = NU
                       'xml' = httr2::resp_body_xml
   )
 
-  out <- out |>
+  out <- resp <- resp |>
     formatter()
 
   if (clean) {
@@ -80,7 +80,7 @@ cong_treaty <- function(congress = NULL, number = NULL, suffix = NULL, item = NU
           purrr::pluck('treaty') |>
           tibble::enframe() |>
           tidyr::pivot_wider() |>
-          tidyr::unnest_wider(col = where(~purrr::vec_depth(.x) < 4), simplify = TRUE, names_sep = '_') |>
+          tidyr::unnest_wider(col = where(~purrr::pluck_depth(.x) < 4), simplify = TRUE, names_sep = '_') |>
           dplyr::rename_with(.fn = function(x) stringr::str_sub(x, end = -3), .cols = dplyr::ends_with('_1')) |>
           clean_names()
       } else {
@@ -90,6 +90,9 @@ cong_treaty <- function(congress = NULL, number = NULL, suffix = NULL, item = NU
           clean_names()
       }
     }
+    out <- out |>
+      add_resp_info(resp) |>
+      cast_date_columns()
   }
   out
 }
@@ -99,17 +102,18 @@ treaty_items <- c('actions', 'committees')
 treaty_endpoint <- function(congress, number, suffix, item) {
   out <- 'treaty'
   if (!is.null(congress)) {
-    out <- paste0(out, '/', congress)
+    out <- paste0(out, '/', tolower(congress))
     if (!is.null(number)) {
-      out <- paste0(out, '/', number)
+      out <- paste0(out, '/', tolower(number))
       if (!is.null(suffix)) {
         out <- paste0(out, '/', suffix)
       }
       if (!is.null(item)) {
-        out <- paste0(out, '/', item)
+        out <- paste0(out, '/', tolower(item))
       }
     }
   }
 
+  # should not be tolower, suffix is case sensitive
   out
 }

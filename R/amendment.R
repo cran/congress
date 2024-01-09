@@ -3,7 +3,7 @@
 #' @param congress Congress number to search for. 81 or later are supported.
 #' @param type Type of amendment. Can be `'hamdt'`, `'samdt'`, or '`suamdt'`.
 #' @param number Amendment assigned number. Numeric.
-#' @param item Information to request. Can be `'actions'`, `'amendments'`, or `'cosponsors'`
+#' @param item Information to request. Can be `'actions'`, `'amendments'`, or `'cosponsors'`. `'text'` is available when `congress >= 117`.
 #' @param from_date start date for search, e.g. `'2022-04-01'`. Defaults to most recent.
 #' @param to_date end date for search, e.g. `'2022-04-03'`. Defaults to most recent.
 #' @param limit number of records to return. Default is 20. Will be truncated to between 1 and 250.
@@ -25,7 +25,6 @@
 #'
 #' cong_amendment(congress = 117, type = 'samdt', number = 2137, item = 'actions')
 #'
-#'
 cong_amendment <- function(congress = NULL, type = NULL, number = NULL, item = NULL,
                            from_date = NULL, to_date = NULL,
                            limit = 20, offset = 0,
@@ -37,6 +36,10 @@ cong_amendment <- function(congress = NULL, type = NULL, number = NULL, item = N
   if (is.null(from_date) & !is.null(to_date) || !is.null(from_date) & is.null(to_date)) {
     cli::cli_abort('Either both or neither of {.arg from_date} and {.arg to_date} must be specified.')
   }
+
+  if (!is.null(item) && item == 'text' && congress < 117) { # nocov start
+    cli::cli_warn('Text of amendments is only available for the 117th Congress and later.')
+  } # nocov end
 
   endpt <- amendment_endpoint(congress = congress, type = type, number = number, item = item)
   req <- httr2::request(base_url = api_url()) |>
@@ -52,7 +55,7 @@ cong_amendment <- function(congress = NULL, type = NULL, number = NULL, item = N
     httr2::req_headers(
       "accept" = glue::glue("application/{format}")
     )
-  out <- req |>
+  resp <- req |>
     httr2::req_perform()
 
   formatter <- switch(format,
@@ -60,12 +63,10 @@ cong_amendment <- function(congress = NULL, type = NULL, number = NULL, item = N
                       'xml' = httr2::resp_body_xml
   )
 
-  out <- out |>
+  out <- resp <- resp |>
     formatter()
 
   if (clean) {
-
-
     if (is.null(number)) {
       out <- out |>
         purrr::pluck('amendments') |>
@@ -77,17 +78,20 @@ cong_amendment <- function(congress = NULL, type = NULL, number = NULL, item = N
           purrr::pluck('amendment') |>
           tibble::enframe() |>
           tidyr::pivot_wider() |>
-          tidyr::unnest_wider(col = where(~purrr::vec_depth(.x) < 4), simplify = TRUE, names_sep = '_') |>
+          tidyr::unnest_wider(col = where(~purrr::pluck_depth(.x) < 4), simplify = TRUE, names_sep = '_') |>
           dplyr::rename_with(.fn = function(x) stringr::str_sub(x, end = -3), .cols = dplyr::ends_with('_1')) |>
           clean_names() #|>
         #dplyr::mutate(across(where(is.list), function(x) if (max(lengths(x)) == 1 ) dplyr::bind_rows(x) else dplyr::bind_rows(purrr::set_names(x, seq_along(x)))))
       } else {
         out <- out |>
           purrr::pluck(item) |>
-          dplyr::bind_rows() |>
+          list_hoist() |>
           clean_names()
       }
     }
+    out <- out |>
+      add_resp_info(resp) |>
+      cast_date_columns()
   }
   out
 }
@@ -110,5 +114,5 @@ amendment_endpoint <- function(congress, type, number, item) {
     }
   }
 
-  out
+  tolower(out)
 }
